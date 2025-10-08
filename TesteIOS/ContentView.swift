@@ -6,56 +6,51 @@
 //
 
 import SwiftUI
-import SwiftData
+import FirebaseAuth
 
 struct ContentView: View {
-    @Environment(\.modelContext) private var modelContext
-    @Query private var items: [Item]
+    @State private var myUid: String? = Auth.auth().currentUser?.uid
+    @State private var roomCode: String = ""
+    @State private var showChat = false
 
     var body: some View {
-        NavigationSplitView {
-            List {
-                ForEach(items) { item in
-                    NavigationLink {
-                        Text("Item at \(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))")
-                    } label: {
-                        Text(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))
+        NavigationStack {
+            Form {
+                Section("Autenticação") {
+                    if let uid = myUid {
+                        Label("Logado anonimamente", systemImage: "checkmark.seal.fill")
+                            .foregroundStyle(.green)
+                        Text("UID: \(uid)").font(.footnote).textSelection(.enabled)
+                    } else {
+                        Button("Entrar anonimamente") {
+                            Task {
+                                do {
+                                    let result = try await Auth.auth().signInAnonymously()
+                                    myUid = result.user.uid
+                                } catch {
+                                    print("Erro auth:", error)
+                                }
+                            }
+                        }
                     }
                 }
-                .onDelete(perform: deleteItems)
-            }
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    EditButton()
-                }
-                ToolbarItem {
-                    Button(action: addItem) {
-                        Label("Add Item", systemImage: "plus")
+
+                Section("Sala (chave compartilhada)") {
+                    TextField("Ex.: sala123", text: $roomCode)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                    Button("Entrar na conversa") {
+                        showChat = true
                     }
+                    .disabled(myUid == nil || roomCode.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
             }
-        } detail: {
-            Text("Select an item")
-        }
-    }
-
-    private func addItem() {
-        withAnimation {
-            let newItem = Item(timestamp: Date())
-            modelContext.insert(newItem)
-        }
-    }
-
-    private func deleteItems(offsets: IndexSet) {
-        withAnimation {
-            for index in offsets {
-                modelContext.delete(items[index])
+            .navigationTitle("Chat Criptografado (demo)")
+            .navigationDestination(isPresented: $showChat) {
+                if let myUid {
+                    ChatView(roomCode: roomCode, myUid: myUid)
+                }
             }
         }
     }
-}
-
-#Preview {
-    ContentView()
-        .modelContainer(for: Item.self, inMemory: true)
 }
