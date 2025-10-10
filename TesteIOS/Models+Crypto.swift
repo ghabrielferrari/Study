@@ -1,5 +1,5 @@
 //
-//  ChatMessage.swift
+//  Models+Crypto.swift
 //  TesteIOS
 //
 //  Created by Gabriel Ferrari on 08/10/25.
@@ -63,3 +63,5 @@ enum E2EE {
         return String(decoding: clear, as: UTF8.self)
     }
 }
+
+

@@ -6,6 +6,7 @@
 import SwiftUI
 
 struct ChatView: View {
+    // isso é uma struct que me retorna uma view, necessariamente tenho que ter um var body dentro dele
     @StateObject private var vm: ChatViewModel
 
     init(roomCode: String, myUid: String) {
