@@ -14,14 +14,9 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil
     ) -> Bool {
-        if FirebaseApp.app() == nil {
-            FirebaseApp.configure()
-        }
-
-        // evita confusao de cache para testes
-        let settings = FirestoreSettings()
-        settings.isPersistenceEnabled = false
-        Firestore.firestore().settings = settings
+        
+        FirebaseApp.configure()
+        
 
         return true
     }

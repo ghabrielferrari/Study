@@ -21,7 +21,7 @@ final class ChatViewModel: ObservableObject {
 
     let roomId: String
     let myUid: String
-    private let key: SymmetricKey   // ⬅️ usa CryptoKit
+    private let key: SymmetricKey
 
     init(roomCode: String, myUid: String) {
         self.roomId = ChatViewModel.sanitize(roomCode)
