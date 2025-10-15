@@ -7,9 +7,9 @@
 
 import SwiftUI
 
-@main
+@main // define o ponto de entrada do ciclo de vida do IOS
 struct TesteIOSApp: App {
-    // acopla o AppDelegate (que inicia o firebase)
+    // acopla o AppDelegate (que inicia o firestore)
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
     var body: some Scene {
