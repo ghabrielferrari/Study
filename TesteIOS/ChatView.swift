@@ -8,13 +8,14 @@ import SwiftUI
 struct ChatView: View {
     @StateObject private var vm: ChatViewModel
 
-    init(roomCode: String, myUid: String) {
-        _vm = StateObject(wrappedValue: ChatViewModel(roomCode: roomCode, myUid: myUid))
+    init(roomCode: String, myUid: String, myUsername: String) {       // 🆕
+        _vm = StateObject(wrappedValue: ChatViewModel(
+            roomCode: roomCode, myUid: myUid, myUsername: myUsername  // 🆕
+        ))
     }
 
     var body: some View {
         VStack(spacing: 8) {
-            // Status e info
             VStack(alignment: .leading, spacing: 4) {
                 Text(vm.status).font(.footnote).foregroundStyle(.secondary)
                 Text("Sala: \(vm.roomId) • Meu UID: \(vm.myUid.prefix(8))…")
@@ -22,18 +23,18 @@ struct ChatView: View {
             }
             .padding(.top, 8)
 
-            // Mensagens
             List(vm.messages) { msg in
+                let isMe = (msg.senderId == vm.myUid)
+                let name = isMe ? "Você (\(vm.myUsername))" : (vm.usernames[msg.senderId] ?? "Contato") // 🆕
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(msg.senderId == vm.myUid ? "Você" : "Contato")
+                    Text(name)
                         .font(.caption).foregroundStyle(.secondary)
                     Text(vm.decrypted[msg.id] ?? "…")
                 }
                 .frame(maxWidth: .infinity,
-                       alignment: msg.senderId == vm.myUid ? .trailing : .leading)
+                       alignment: isMe ? .trailing : .leading)
             }
 
-            // Composer
             HStack {
                 TextField("Mensagem…", text: $vm.input)
                     .textFieldStyle(.roundedBorder)

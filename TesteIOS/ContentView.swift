@@ -5,25 +5,25 @@
 //  Created by Gabriel Ferrari on 07/10/25.
 //
 
+// ContentView.swift
 import SwiftUI
 import FirebaseAuth
 import FirebaseFirestore
 
-/// Tela inicial: autentica anonimamente, reserva um username único e entra numa sala.
 @MainActor
 struct ContentView: View {
-
     // MARK: - UI State
     @State private var myUid: String? = Auth.auth().currentUser?.uid
     @State private var username: String = ""
     @State private var roomCode: String = ""
     @State private var errorMessage: String?
     @State private var showChat: Bool = false
+    @State private var isLoggingIn: Bool = false        // 🆕 evita múltiplas chamadas
+    @State private var loginTask: Task<Void, Never>?    // 🆕 para “debounce”
 
     // MARK: - Firebase
     private let db = Firestore.firestore()
 
-    // MARK: - View
     var body: some View {
         NavigationStack {
             Form {
@@ -34,13 +34,13 @@ struct ContentView: View {
             .navigationTitle("Chat")
             .navigationDestination(isPresented: $showChat) {
                 if let myUid {
-                    ChatView(roomCode: roomCode, myUid: myUid)
+                    // 🆕 passamos o username para o chat
+                    ChatView(roomCode: roomCode, myUid: myUid, myUsername: sanitizedUsername)
                 }
             }
         }
     }
 
-    // MARK: - Sections
     private var identificationSection: some View {
         Section("Identificação") {
             if let uid = myUid {
@@ -51,22 +51,26 @@ struct ContentView: View {
                     .font(.footnote)
                     .textSelection(.enabled)
 
-                // Botão de sair
-                Button(role: .destructive) {
-                    handleSignOut()
-                } label: {
-                    Text("Sair")
-                }
-
+                Button(role: .destructive) { handleSignOut() } label: { Text("Sair") }
             } else {
                 TextField("Escolha um username", text: $username)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
-
-                Button("Entrar") {
-                    Task { await handleLoginAndUsername() }
-                }
-                .disabled(sanitizedUsername.isEmpty)
+                    .submitLabel(.done)
+                    // Enter / Return dispara imediatamente
+                    .onSubmit { Task { await handleLoginAndUsername() } }
+                    // “Auto” sem botão: debounce de 0.5s ao digitar
+                    .onChange(of: username) { _ in
+                        loginTask?.cancel()
+                        let current = sanitizedUsername
+                        guard !current.isEmpty else { return }
+                        loginTask = Task { [current] in
+                            try? await Task.sleep(nanoseconds: 500_000_000) // 0.5s
+                            if !Task.isCancelled, myUid == nil {
+                                await handleLoginAndUsername()
+                            }
+                        }
+                    }
             }
         }
     }
@@ -77,25 +81,22 @@ struct ContentView: View {
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
 
-            Button("Entrar na conversa") {
-                showChat = true
-            }
-            .disabled(myUid == nil || sanitizedRoomCode.isEmpty)
+            Button("Entrar na conversa") { showChat = true }
+                .disabled(myUid == nil || sanitizedRoomCode.isEmpty)
         }
     }
 
     private var errorSection: some View {
         Group {
             if let errorMessage {
-                Text(errorMessage)
-                    .foregroundColor(.red)
+                Text(errorMessage).foregroundColor(.red)
             }
         }
     }
 
     // MARK: - Intent
-    /// Fluxo: login anônimo + reserva de username único via transação.
     private func handleLoginAndUsername() async {
+        guard !isLoggingIn else { return }
         errorMessage = nil
         let uname = sanitizedUsername
         guard !uname.isEmpty else {
@@ -103,10 +104,14 @@ struct ContentView: View {
             return
         }
 
+        isLoggingIn = true
+        defer { isLoggingIn = false }
+
         do {
             let authResult = try await Auth.auth().signInAnonymously()
             let uid = authResult.user.uid
             try await reserveUsernameTransaction(username: uname, uid: uid)
+            try await saveUserProfile(uid: uid, username: uname) // 🆕 salva /users/{uid}
             myUid = uid
         } catch {
             let e = error as NSError
@@ -115,7 +120,6 @@ struct ContentView: View {
         }
     }
 
-    /// Faz logout do Firebase (teste).
     private func handleSignOut() {
         do {
             try Auth.auth().signOut()
@@ -128,7 +132,6 @@ struct ContentView: View {
     }
 
     // MARK: - Firestore
-    /// Reserva o username em `/usernames/{username}` garantindo exclusividade.
     private func reserveUsernameTransaction(username: String, uid: String) async throws {
         let ref = db.collection("usernames").document(username)
 
@@ -151,24 +154,27 @@ struct ContentView: View {
                     return nil
                 }
             }, completion: { _, error in
-                if let error {
-                    cont.resume(throwing: error)
-                } else {
-                    cont.resume(returning: ())
-                }
+                if let error { cont.resume(throwing: error) }
+                else { cont.resume(returning: ()) }
             })
         }
+    }
+
+    // 🆕 mapeamento uid -> username para o chat
+    private func saveUserProfile(uid: String, username: String) async throws {
+        try await db.collection("users").document(uid).setData([
+            "username": username,
+            "updatedAt": FieldValue.serverTimestamp()
+        ], merge: true)
     }
 
     // MARK: - Helpers
     private var sanitizedUsername: String {
         username.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }
-
     private var sanitizedRoomCode: String {
         roomCode.trimmingCharacters(in: .whitespacesAndNewlines)
     }
-
     private var displayName: String {
         sanitizedUsername.isEmpty ? "(sem nome)" : sanitizedUsername
     }

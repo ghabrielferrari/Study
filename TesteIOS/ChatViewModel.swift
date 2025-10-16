@@ -1,8 +1,3 @@
-//
-//  ChatViewModel.swift
-//  TesteIOS
-//
-
 import Foundation
 import SwiftUI
 import Combine
@@ -21,12 +16,18 @@ final class ChatViewModel: ObservableObject {
 
     let roomId: String
     let myUid: String
+    let myUsername: String                              // 🆕
     private let key: SymmetricKey
 
-    init(roomCode: String, myUid: String) {
+    // cache uid -> username
+    @Published var usernames: [String: String] = [:]    // 🆕
+
+    init(roomCode: String, myUid: String, myUsername: String) { // 🆕
         self.roomId = ChatViewModel.sanitize(roomCode)
         self.myUid = myUid
+        self.myUsername = myUsername
         self.key = E2EE.deriveKey(fromRoomCode: roomCode)
+        self.usernames[myUid] = myUsername              // 🆕 já sabemos o nosso
     }
 
     static func sanitize(_ s: String) -> String {
@@ -45,7 +46,10 @@ final class ChatViewModel: ObservableObject {
                 if let err { self.status = "Erro: \(err.localizedDescription)"; return }
                 let docs = snap?.documents ?? []
                 self.messages = docs.compactMap { ChatMessage(doc: $0) }
-                Task { await self.decryptAll() }
+                Task {
+                    await self.decryptAll()
+                    await self.resolveUsernamesForMessages()          // 🆕 busca nomes que faltam
+                }
             }
     }
 
@@ -81,5 +85,31 @@ final class ChatViewModel: ObservableObject {
             }
         }
         decrypted = out
+    }
+
+    // 🆕 carrega nomes de usuários para os senderIds que ainda não conhecemos
+    private func resolveUsernamesForMessages() async {
+        let unknown = Set(messages.map { $0.senderId })
+            .subtracting(Set(usernames.keys))
+        guard !unknown.isEmpty else { return }
+
+        await withTaskGroup(of: (String, String?).self) { group in
+            for uid in unknown {
+                group.addTask { [uid] in
+                    do {
+                        let snap = try await self.db.collection("users").document(uid).getDocument()
+                        let name = snap.get("username") as? String
+                        return (uid, name)
+                    } catch {
+                        return (uid, nil)
+                    }
+                }
+            }
+            var newMap = usernames
+            for await (uid, name) in group {
+                if let name { newMap[uid] = name }
+            }
+            usernames = newMap
+        }
     }
 }
